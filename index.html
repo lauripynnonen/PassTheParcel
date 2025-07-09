@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pass the Parcel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .file-upload {
+            margin-bottom: 30px;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px dashed rgba(255, 255, 255, 0.5);
+            border-radius: 10px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .file-input-wrapper:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.8);
+        }
+
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .time-controls {
+            margin-bottom: 30px;
+        }
+
+        .time-control {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .time-control label {
+            font-weight: bold;
+        }
+
+        .time-control input {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 5px;
+            padding: 8px 12px;
+            color: white;
+            font-size: 16px;
+            width: 80px;
+        }
+
+        .time-control input::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        button {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a6f);
+            border: none;
+            color: white;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        button:disabled {
+            background: rgba(255, 255, 255, 0.3);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .start-btn {
+            background: linear-gradient(45deg, #4ecdc4, #44a08d);
+        }
+
+        .continue-btn {
+            background: linear-gradient(45deg, #ffeaa7, #fab1a0);
+            color: #2d3436;
+            display: none;
+            font-size: 24px;
+            padding: 20px 40px;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            font-size: 18px;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .playing {
+            color: #00b894;
+        }
+
+        .stopped {
+            color: #e17055;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            margin-top: 20px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00b894, #00cec9);
+            width: 0%;
+            transition: width 0.1s ease;
+        }
+
+        .music-info {
+            margin-top: 20px;
+            font-size: 16px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Pass the Parcel 🎁</h1>
+        
+        <div class="file-upload">
+            <div class="file-input-wrapper">
+                <input type="file" id="audioFile" accept="audio/*">
+                <div>
+                    <div style="font-size: 24px; margin-bottom: 10px;">📁</div>
+                    <div>Choose MP3 file</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="time-controls">
+            <div class="time-control">
+                <label>Min time (seconds):</label>
+                <input type="number" id="minTime" min="3" max="30" value="5">
+            </div>
+            <div class="time-control">
+                <label>Max time (seconds):</label>
+                <input type="number" id="maxTime" min="3" max="30" value="15">
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="startBtn" class="start-btn" disabled>Start Game</button>
+            <button id="stopBtn" disabled>Stop</button>
+        </div>
+
+        <button id="continueBtn" class="continue-btn">Continue Playing! 🎵</button>
+
+        <div class="status" id="status">Upload an MP3 file to begin</div>
+
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+
+        <div class="music-info" id="musicInfo"></div>
+
+        <audio id="audioPlayer" preload="auto"></audio>
+    </div>
+
+    <script>
+        class PassTheParcelGame {
+            constructor() {
+                this.audioPlayer = document.getElementById('audioPlayer');
+                this.audioFile = document.getElementById('audioFile');
+                this.startBtn = document.getElementById('startBtn');
+                this.stopBtn = document.getElementById('stopBtn');
+                this.continueBtn = document.getElementById('continueBtn');
+                this.status = document.getElementById('status');
+                this.progressFill = document.getElementById('progressFill');
+                this.musicInfo = document.getElementById('musicInfo');
+                this.minTimeInput = document.getElementById('minTime');
+                this.maxTimeInput = document.getElementById('maxTime');
+                
+                this.isPlaying = false;
+                this.gameTimer = null;
+                this.progressTimer = null;
+                this.currentFileName = '';
+                
+                this.initializeEventListeners();
+            }
+
+            initializeEventListeners() {
+                this.audioFile.addEventListener('change', (e) => this.handleFileUpload(e));
+                this.startBtn.addEventListener('click', () => this.startGame());
+                this.stopBtn.addEventListener('click', () => this.stopGame());
+                this.continueBtn.addEventListener('click', () => this.continueGame());
+                
+                this.audioPlayer.addEventListener('loadedmetadata', () => this.updateMusicInfo());
+                this.audioPlayer.addEventListener('ended', () => this.handleAudioEnd());
+                
+                // Validate time inputs
+                this.minTimeInput.addEventListener('change', () => this.validateTimeInputs());
+                this.maxTimeInput.addEventListener('change', () => this.validateTimeInputs());
+            }
+
+            handleFileUpload(event) {
+                const file = event.target.files[0];
+                if (file) {
+                    this.currentFileName = file.name;
+                    const url = URL.createObjectURL(file);
+                    this.audioPlayer.src = url;
+                    this.startBtn.disabled = false;
+                    this.updateStatus('Ready to play!');
+                    
+                    // Update file display
+                    const wrapper = document.querySelector('.file-input-wrapper div');
+                    wrapper.innerHTML = `
+                        <div style="font-size: 24px; margin-bottom: 10px;">🎵</div>
+                        <div>${file.name}</div>
+                    `;
+                }
+            }
+
+            validateTimeInputs() {
+                const minTime = parseInt(this.minTimeInput.value);
+                const maxTime = parseInt(this.maxTimeInput.value);
+                
+                if (minTime >= maxTime) {
+                    this.maxTimeInput.value = minTime + 1;
+                }
+                
+                if (minTime < 3) this.minTimeInput.value = 3;
+                if (maxTime > 30) this.maxTimeInput.value = 30;
+                if (minTime > 30) this.minTimeInput.value = 30;
+            }
+
+            startGame() {
+                if (!this.audioPlayer.src) return;
+                
+                this.isPlaying = true;
+                this.audioPlayer.currentTime = 0;
+                this.audioPlayer.play();
+                
+                this.startBtn.disabled = true;
+                this.stopBtn.disabled = false;
+                this.continueBtn.style.display = 'none';
+                
+                this.scheduleRandomStop();
+                this.startProgressUpdate();
+                this.updateStatus('🎵 Music is playing... pass the parcel!', 'playing');
+            }
+
+            scheduleRandomStop() {
+                const minTime = parseInt(this.minTimeInput.value) * 1000;
+                const maxTime = parseInt(this.maxTimeInput.value) * 1000;
+                const randomTime = Math.random() * (maxTime - minTime) + minTime;
+                
+                this.gameTimer = setTimeout(() => {
+                    this.pauseForParcel();
+                }, randomTime);
+            }
+
+            pauseForParcel() {
+                if (!this.isPlaying) return;
+                
+                this.audioPlayer.pause();
+                this.isPlaying = false;
+                this.stopBtn.disabled = true;
+                this.continueBtn.style.display = 'block';
+                
+                this.updateStatus('🎁 STOP! Remove a layer and pass the parcel!', 'stopped');
+                this.stopProgressUpdate();
+            }
+
+            continueGame() {
+                if (this.audioPlayer.ended) {
+                    this.restartGame();
+                    return;
+                }
+                
+                this.isPlaying = true;
+                this.audioPlayer.play();
+                
+                this.stopBtn.disabled = false;
+                this.continueBtn.style.display = 'none';
+                
+                this.scheduleRandomStop();
+                this.startProgressUpdate();
+                this.updateStatus('🎵 Music is playing... pass the parcel!', 'playing');
+            }
+
+            stopGame() {
+                this.isPlaying = false;
+                this.audioPlayer.pause();
+                this.audioPlayer.currentTime = 0;
+                
+                if (this.gameTimer) {
+                    clearTimeout(this.gameTimer);
+                    this.gameTimer = null;
+                }
+                
+                this.startBtn.disabled = false;
+                this.stopBtn.disabled = true;
+                this.continueBtn.style.display = 'none';
+                
+                this.updateStatus('Game stopped. Click Start to play again!');
+                this.stopProgressUpdate();
+                this.updateProgress(0);
+            }
+
+            restartGame() {
+                this.audioPlayer.currentTime = 0;
+                this.startGame();
+            }
+
+            handleAudioEnd() {
+                if (this.isPlaying) {
+                    this.isPlaying = false;
+                    this.stopBtn.disabled = true;
+                    this.continueBtn.style.display = 'block';
+                    this.updateStatus('🎵 Song ended! Click continue to restart', 'stopped');
+                    this.stopProgressUpdate();
+                }
+            }
+
+            startProgressUpdate() {
+                this.progressTimer = setInterval(() => {
+                    this.updateProgress();
+                }, 100);
+            }
+
+            stopProgressUpdate() {
+                if (this.progressTimer) {
+                    clearInterval(this.progressTimer);
+                    this.progressTimer = null;
+                }
+            }
+
+            updateProgress() {
+                if (this.audioPlayer.duration) {
+                    const progress = (this.audioPlayer.currentTime / this.audioPlayer.duration) * 100;
+                    this.progressFill.style.width = progress + '%';
+                }
+            }
+
+            updateMusicInfo() {
+                if (this.audioPlayer.duration) {
+                    const duration = this.formatTime(this.audioPlayer.duration);
+                    this.musicInfo.textContent = `${this.currentFileName} (${duration})`;
+                }
+            }
+
+            formatTime(seconds) {
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            }
+
+            updateStatus(message, className = '') {
+                this.status.textContent = message;
+                this.status.className = 'status ' + className;
+            }
+        }
+
+        // Initialize the game when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new PassTheParcelGame();
+        });
+    </script>
+</body>
+</html>
