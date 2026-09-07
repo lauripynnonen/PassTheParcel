@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Upstream to Impact: how IFC works</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Serif:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#10283F;          /* deep river ink */
+  --river:#1D6F8B;        /* IFC-ish teal blue */
+  --shallows:#CFE3EA;     /* light water */
+  --bank:#F2F5F7;         /* page */
+  --paper:#FFFFFF;
+  --sun:#E4A11B;          /* XP, badges */
+  --reed:#3F8F5A;         /* correct */
+  --clay:#C7503F;         /* incorrect */
+  --mute:#5B6B78;
+  --line:#D9E1E6;
+  --radius:10px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto} *{transition:none!important;animation:none!important}}
+body{margin:0;font-family:"IBM Plex Sans",system-ui,sans-serif;color:var(--ink);background:var(--bank);line-height:1.55;font-size:16px}
+h1,h2,h3{font-family:"IBM Plex Serif",Georgia,serif;font-weight:600;line-height:1.2;margin:0 0 .4em}
+h1{font-size:2.2rem}
+h2{font-size:1.6rem}
+h3{font-size:1.15rem;font-family:"IBM Plex Sans",sans-serif;font-weight:600}
+p{margin:0 0 1em;max-width:68ch}
+ul{max-width:68ch;padding-left:1.2em}
+li{margin-bottom:.35em}
+a{color:var(--river)}
+button{font:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+
+/* Layout */
+.app{display:grid;grid-template-columns:300px 1fr;min-height:100vh}
+.side{background:var(--ink);color:#fff;padding:28px 22px;position:sticky;top:0;height:100vh;overflow:auto}
+.side h1{font-size:1.35rem;color:#fff;margin-bottom:2px}
+.side .tag{color:#9DBFCD;font-size:.9rem;margin-bottom:22px}
+.main{padding:40px clamp(20px,5vw,72px) 80px;max-width:1000px}
+
+/* Score strip */
+.score{display:flex;gap:14px;align-items:center;margin-bottom:22px;flex-wrap:wrap}
+.xp{background:var(--sun);color:var(--ink);font-weight:600;border-radius:999px;padding:6px 14px}
+.lvl{font-size:.9rem;color:#C8D8E0}
+.streak{font-size:.9rem;color:#C8D8E0}
+
+/* River map */
+.map{position:relative;padding-left:4px}
+.map svg{position:absolute;left:12px;top:0;height:100%;width:24px}
+.node{display:flex;align-items:flex-start;gap:12px;padding:8px 6px 8px 0;width:100%;text-align:left;background:none;border:0;color:#fff;border-radius:8px;position:relative}
+.node:hover{background:rgba(255,255,255,.06)}
+.node.active{background:rgba(255,255,255,.12)}
+.node .dot{width:24px;height:24px;border-radius:50%;border:2px solid #7FB0C2;background:var(--ink);flex:none;display:grid;place-items:center;font-size:.75rem;font-weight:600;position:relative;z-index:1}
+.node.done .dot{background:var(--sun);border-color:var(--sun);color:var(--ink)}
+.node.locked{color:#8FA5B2}
+.node.locked .dot{border-style:dashed;color:#8FA5B2}
+.node .t{font-size:.95rem;line-height:1.25}
+.node .s{display:block;font-size:.78rem;color:#9DBFCD}
+.badges{margin-top:26px;border-top:1px solid rgba(255,255,255,.15);padding-top:16px}
+.badges h3{color:#C8D8E0;font-size:.85rem;margin-bottom:8px;font-weight:500}
+.badge{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border-radius:999px;padding:4px 10px;font-size:.8rem;margin:0 6px 6px 0;color:#C8D8E0}
+.badge.earned{background:var(--sun);color:var(--ink);font-weight:600}
+
+/* Content blocks */
+.block{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:26px 28px;margin-bottom:18px}
+.block.hidden{display:none}
+.block .kicker{font-size:.85rem;color:var(--river);font-weight:600;margin-bottom:6px}
+.callout{border-left:4px solid var(--river);background:#EEF5F8;padding:12px 16px;border-radius:0 8px 8px 0;margin:14px 0;max-width:68ch}
+.callout.sun{border-color:var(--sun);background:#FBF3DF}
+.stat{display:inline-block;margin:6px 24px 6px 0}
+.stat b{display:block;font-family:"IBM Plex Serif",serif;font-size:1.7rem;color:var(--river)}
+.stat span{font-size:.85rem;color:var(--mute)}
+.btn{background:var(--river);color:#fff;border:0;border-radius:8px;padding:10px 18px;font-weight:600}
+.btn:hover{background:#175B72}
+.btn.ghost{background:transparent;color:var(--river);border:1.5px solid var(--river)}
+.btn.sun{background:var(--sun);color:var(--ink)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
+.small{font-size:.88rem;color:var(--mute)}
+.reveal{margin-top:12px}
+.hidden{display:none}
+
+/* Guess first */
+.guess .opts,.quiz .opts{display:grid;gap:8px;margin:12px 0;max-width:68ch}
+.opt{display:flex;gap:10px;align-items:flex-start;background:var(--bank);border:1.5px solid var(--line);border-radius:8px;padding:10px 14px;text-align:left;width:100%}
+.opt:hover{border-color:var(--river)}
+.opt.sel{border-color:var(--river);background:#EEF5F8}
+.opt.right{border-color:var(--reed);background:#EAF5EE}
+.opt.wrong{border-color:var(--clay);background:#FBECEA}
+.opt .k{font-weight:600;color:var(--river);flex:none}
+.conf{display:flex;gap:8px;align-items:center;margin:8px 0 4px;font-size:.9rem}
+.conf button{border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:4px 12px}
+.conf button.sel{border-color:var(--ink);background:var(--ink);color:#fff}
+.fb{margin-top:10px;padding:12px 14px;border-radius:8px;max-width:68ch}
+.fb.ok{background:#EAF5EE;border:1px solid #BFE0CA}
+.fb.no{background:#FBECEA;border:1px solid #F1C6C0}
+.fb b{display:block;margin-bottom:4px}
+
+/* Sorting game */
+.sort .pool{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.chip{border:1.5px solid var(--ink);background:#fff;border-radius:999px;padding:6px 14px;font-size:.92rem}
+.chip.sel{background:var(--ink);color:#fff}
+.chip.placed{opacity:.35;pointer-events:none}
+.bins{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.bin{border:2px dashed var(--line);border-radius:10px;padding:12px;min-height:110px;background:var(--bank);cursor:pointer}
+.bin:hover{border-color:var(--river)}
+.bin h4{margin:0 0 8px;font-size:.95rem}
+.bin .in{display:flex;flex-wrap:wrap;gap:6px}
+.bin .in span{background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:.85rem}
+.bin .in span.ok{border-color:var(--reed);background:#EAF5EE}
+.bin .in span.bad{border-color:var(--clay);background:#FBECEA;text-decoration:line-through}
+
+/* Explain */
+textarea{width:100%;max-width:68ch;min-height:90px;border:1.5px solid var(--line);border-radius:8px;padding:10px;font:inherit}
+.model{background:var(--bank);border-radius:8px;padding:12px 14px;max-width:68ch}
+
+/* Deal desk */
+.deal{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-bottom:12px}
+.deal .memo{font-family:"IBM Plex Serif",serif;font-size:1.05rem;border-left:4px solid var(--sun);padding-left:14px;margin:8px 0 12px;max-width:68ch}
+
+/* Progress bar */
+.pbar{height:8px;background:rgba(255,255,255,.15);border-radius:999px;overflow:hidden;margin:6px 0 18px}
+.pbar div{height:100%;background:var(--sun);width:0;transition:width .4s}
+
+/* Toast */
+.toast{position:fixed;bottom:22px;right:22px;background:var(--ink);color:#fff;padding:12px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(16,40,63,.25);opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none;max-width:320px}
+.toast.show{opacity:1;transform:none}
+.toast b{color:var(--sun)}
+
+/* Diagram */
+.diagram{margin:14px 0;max-width:640px}
+.diagram svg{width:100%;height:auto}
+
+/* Certificate */
+.cert{border:6px double var(--sun);padding:34px;text-align:center;background:#fff;max-width:640px}
+.cert h2{font-size:1.9rem}
+.cert input{font:inherit;border:0;border-bottom:2px solid var(--line);text-align:center;font-size:1.2rem;padding:4px;width:80%;max-width:360px}
+
+table{border-collapse:collapse;width:100%;max-width:68ch;font-size:.95rem;margin:10px 0 16px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--bank)}
+
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}
+  .side{position:static;height:auto;padding:18px}
+  .map .node .s{display:none}
+  .main{padding:24px 18px 60px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <h1>Upstream to Impact</h1>
+    <div class="tag">How IFC works, in six short stages</div>
+    <div class="score">
+      <span class="xp" id="xp">0 XP</span>
+      <span class="lvl" id="lvl">Observer</span>
+      <span class="streak" id="streak"></span>
+    </div>
+    <div class="pbar"><div id="pfill"></div></div>
+    <nav class="map" id="map" aria-label="Course map"></nav>
+    <div class="badges">
+      <h3>Badges</h3>
+      <div id="badges"></div>
+    </div>
+    <div style="margin-top:20px;font-size:.8rem;color:#8FA5B2">
+      <button class="btn ghost" style="border-color:#8FA5B2;color:#C8D8E0;padding:5px 10px;font-size:.8rem" onclick="resetAll()">Reset progress</button>
+    </div>
+  </aside>
+  <main class="main" id="main"></main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   COURSE CONTENT
+   Six modules plus a final challenge. Each module is a sequence
+   of blocks revealed one at a time (chunking). Block types:
+   guess   : predict before you read (pre-testing / generation effect)
+   read    : one idea per screen, dual coded with simple diagrams
+   sort    : tap-to-sort game (active classification)
+   quiz    : confidence-weighted retrieval practice with feedback
+   flash   : spaced retrieval of an earlier module
+   explain : self-explanation prompt with a model answer
+   ========================================================= */
+const COURSE = [
+{ id:"m1", title:"The mission and the Group", short:"Where IFC sits in the World Bank Group", badge:"Group navigator", blocks:[
+  {type:"guess", q:"Guess first. Roughly how much of IFC's money comes from donor governments' aid budgets each year?", opts:["Almost all of it","About half","Very little; IFC mainly borrows on capital markets and reinvests its profits"], a:2, why:"Most people assume IFC runs on aid money. It does not. IFC raises most of what it lends by issuing AAA-rated bonds. Hold that thought; it shapes everything else in this course."},
+  {type:"read", kicker:"One mission, five institutions", h:"What the World Bank Group is trying to do", html:`
+    <p>The World Bank Group's mission is to end extreme poverty and boost shared prosperity on a liveable planet. Five institutions work on that mission, each with a different tool.</p>
+    <div class="diagram"><svg viewBox="0 0 640 230" role="img" aria-label="Diagram of the five World Bank Group institutions">
+      <rect x="20" y="20" width="600" height="46" rx="8" fill="#10283F"/><text x="320" y="49" fill="#fff" font-size="16" text-anchor="middle" font-family="IBM Plex Sans">World Bank Group mission: a world free of poverty on a liveable planet</text>
+      <g font-family="IBM Plex Sans" font-size="13">
+        <rect x="20" y="100" width="110" height="110" rx="8" fill="#CFE3EA"/><text x="75" y="128" text-anchor="middle" font-weight="600">IBRD</text><text x="75" y="150" text-anchor="middle" font-size="11">Lends to</text><text x="75" y="165" text-anchor="middle" font-size="11">middle-income</text><text x="75" y="180" text-anchor="middle" font-size="11">governments</text>
+        <rect x="142" y="100" width="110" height="110" rx="8" fill="#CFE3EA"/><text x="197" y="128" text-anchor="middle" font-weight="600">IDA</text><text x="197" y="150" text-anchor="middle" font-size="11">Grants and soft</text><text x="197" y="165" text-anchor="middle" font-size="11">loans to poorest</text><text x="197" y="180" text-anchor="middle" font-size="11">countries</text>
+        <rect x="264" y="100" width="110" height="110" rx="8" fill="#1D6F8B"/><text x="319" y="128" text-anchor="middle" font-weight="600" fill="#fff">IFC</text><text x="319" y="150" text-anchor="middle" font-size="11" fill="#fff">Invests in and</text><text x="319" y="165" text-anchor="middle" font-size="11" fill="#fff">advises private</text><text x="319" y="180" text-anchor="middle" font-size="11" fill="#fff">companies</text>
+        <rect x="386" y="100" width="110" height="110" rx="8" fill="#CFE3EA"/><text x="441" y="128" text-anchor="middle" font-weight="600">MIGA</text><text x="441" y="150" text-anchor="middle" font-size="11">Political risk</text><text x="441" y="165" text-anchor="middle" font-size="11">insurance and</text><text x="441" y="180" text-anchor="middle" font-size="11">guarantees</text>
+        <rect x="508" y="100" width="110" height="110" rx="8" fill="#CFE3EA"/><text x="563" y="128" text-anchor="middle" font-weight="600">ICSID</text><text x="563" y="150" text-anchor="middle" font-size="11">Settles investor</text><text x="563" y="165" text-anchor="middle" font-size="11">and state</text><text x="563" y="180" text-anchor="middle" font-size="11">disputes</text>
+      </g>
+    </svg></div>
+    <p>IBRD and IDA together are "the World Bank". They lend to governments. IFC is the Group's private sector arm: founded in 1956, owned by its member governments, and working with companies rather than ministries. MIGA insures investors against political risk. ICSID settles disputes.</p>
+    <div class="callout">A simple rule of thumb: if the client is a government, think World Bank. If the client is a company, think IFC. If an investor wants protection from political risk, think MIGA.</div>`},
+  {type:"read", kicker:"Why a private sector arm at all", h:"Public money is not enough", html:`
+    <p>Development needs run to trillions of dollars a year. Governments and aid combined cannot fund them. Most jobs in developing countries are created by private firms, so the Group needs a way to get private capital and private skill working on development problems.</p>
+    <p>That is IFC's job. It invests its own money in companies and projects, brings other investors alongside, and advises firms and governments so that more private investment becomes possible. The Group calls this logic the Cascade, or Maximising Finance for Development: use scarce public money only where a private solution will not work.</p>
+    <p>Since 2023 the Group has moved towards working as "one World Bank Group", with a single Scorecard, joint country strategies and a jobs agenda that runs across all institutions. The 2025 Annual Report was the first consolidated report for the whole Group.</p>
+    <div class="stat"><b>100+</b><span>countries where IFC works</span></div>
+    <div class="stat"><b>1956</b><span>year IFC was founded</span></div>
+    <div class="stat"><b>$71.7bn</b><span>FY25 commitments, including mobilised capital</span></div>`},
+  {type:"sort", h:"Route the client", intro:"Tap a request, then tap the institution that should take the lead. You can change your mind before you check.", bins:["World Bank (IBRD/IDA)","IFC","MIGA"], items:[
+    ["A ministry of education wants to finance 300 new primary schools",0],
+    ["A cement company wants a long-term loan to modernise its plant",1],
+    ["A European investor wants cover against expropriation in a new market",2],
+    ["A microfinance bank wants IFC to take an equity stake",1],
+    ["A finance ministry needs budget support tied to policy reforms",0],
+    ["A port operator wants insurance against currency inconvertibility",2]]},
+  {type:"quiz", h:"Check your understanding", qs:[
+    {q:"Which two institutions together are usually meant by 'the World Bank'?", opts:["IFC and MIGA","IBRD and IDA","IDA and ICSID"], a:1, why:"IBRD serves middle-income countries; IDA serves the poorest. Both lend to governments."},
+    {q:"Who owns IFC?", opts:["Private shareholders listed on stock exchanges","Its member governments","The World Bank's staff pension fund"], a:1, why:"IFC is owned by its member countries. It is not a private bank, even though it works with private clients."},
+    {q:"The Cascade approach says public money should be used...", opts:["First, before any private investor is approached","Only where a private solution will not work","Only for climate projects"], a:1, why:"The point of the Cascade is to save scarce public and concessional money for the cases that really need it."}]},
+  {type:"explain", prompt:"Explain to a new colleague, in two sentences, why the World Bank Group needs IFC in addition to the World Bank.", model:"The World Bank lends to governments, but most jobs and much of the investment that development needs come from private firms. IFC invests in and advises those firms, and brings other private investors with it, so the Group can reach parts of the economy that public lending cannot."}
+]},
+
+{ id:"m2", title:"Investment Services", short:"Loans, equity, guarantees and mobilisation", badge:"Deal maker", blocks:[
+  {type:"guess", q:"Guess first. When IFC invests equity in a company, how large a stake does it normally take?", opts:["A controlling majority","A minority stake, typically well under a quarter","It never takes equity, only loans"], a:1, why:"IFC is an investor, not an owner-operator. It usually takes a minority stake and sits alongside a sponsor who runs the business."},
+  {type:"read", kicker:"The product shelf", h:"What IFC can put on the table", html:`
+    <table><tr><th>Product</th><th>What it is</th><th>Typical use</th></tr>
+    <tr><td>Loans</td><td>Long-term debt from IFC's own account, often in local currency, at commercial rates</td><td>Expansion capital, infrastructure, banks on-lending to small firms</td></tr>
+    <tr><td>Equity</td><td>Minority shareholdings, direct or through private equity funds</td><td>Growth companies, financial institutions, first movers in new markets</td></tr>
+    <tr><td>Syndications</td><td>IFC arranges a loan and sells parts of it to other lenders (B loans, parallel loans, portfolio programmes such as MCPP)</td><td>Bringing commercial banks and institutional investors into deals they would not do alone</td></tr>
+    <tr><td>Trade and supply chain finance</td><td>Short-term guarantees and lines that keep goods moving between banks and traders</td><td>Importers and exporters in frontier markets</td></tr>
+    <tr><td>Guarantees and risk sharing</td><td>IFC absorbs part of a risk so a bank or investor will proceed</td><td>Lending to small firms, local currency bonds</td></tr>
+    <tr><td>Blended finance</td><td>Donor concessional money mixed with IFC's own account to make a marginal deal viable</td><td>Fragile states, climate, agribusiness, first-of-a-kind projects</td></tr>
+    <tr><td>Asset management (AMC)</td><td>IFC manages funds on behalf of third-party investors that co-invest with IFC</td><td>Sovereign wealth and pension funds seeking emerging-market exposure</td></tr>
+    </table>
+    <p>Own-account money and mobilised money are counted separately. In FY25 IFC committed $28.3 billion from its own account and $71.7 billion in total once capital mobilised from other investors is included. Mobilisation is the multiplier that makes IFC bigger than its own balance sheet.</p>`},
+  {type:"read", kicker:"The rules of the game", h:"Three tests every investment must pass", html:`
+    <ul>
+      <li><strong>Commercial viability.</strong> IFC invests on commercial terms and expects to be repaid. There is no sovereign guarantee. A project that cannot pay its way is a job for the World Bank, not IFC.</li>
+      <li><strong>Additionality.</strong> IFC must bring something the market will not: longer tenors, local currency, risk appetite, a stamp of confidence, or non-financial value such as environmental and social standards and governance improvements. If a commercial bank would happily do the deal alone, IFC should step aside.</li>
+      <li><strong>Development impact.</strong> Every project gets an impact score before approval (Module 6 covers this). Impact is weighed against return, risk and strategy.</li>
+    </ul>
+    <p>Clients also commit to IFC's Performance Standards on environmental and social risk, which have become a de facto global benchmark for project finance.</p>
+    <div class="callout sun">Typical shape of a deal: IFC funds a portion of total project cost, takes a minority position if equity is involved, and brings co-financiers for the rest. The sponsor runs the business. IFC keeps the money working for years, then exits.</div>`},
+  {type:"quiz", h:"Check your understanding", qs:[
+    {q:"A commercial bank is ready to lend to a company on good terms without IFC. What does the additionality test say?", opts:["IFC should still invest to grow its volume","IFC should probably step aside","IFC should insist on equity instead"], a:1, why:"If the market already works, IFC adds nothing. Additionality means filling a gap, not crowding out."},
+    {q:"What does 'mobilisation' mean in IFC's numbers?", opts:["Money IFC borrows on bond markets","Capital from other investors that IFC brings into its deals","IFC staff travel budgets"], a:1, why:"Mobilised capital comes from banks, funds and other investors that follow IFC into a project. It is why total commitments are far larger than own-account commitments."},
+    {q:"Which is a short-term product?", opts:["Trade finance guarantees","Equity in a growth company","A 15-year infrastructure loan"], a:0, why:"Trade finance keeps goods moving in cycles of months. The other two are long-term commitments."},
+    {q:"Blended finance means...", opts:["Mixing loans and equity in one deal","Combining donor concessional funds with IFC's own commercial money to make a marginal project viable","Lending in several currencies at once"], a:1, why:"The concessional slice absorbs risk or lowers cost just enough for the deal to work. IFC helped write the industry principles for using it sparingly."}]},
+  {type:"flash", from:"m1", q:"Flashback. A government wants to borrow for a national road programme. Which institution takes the lead?", opts:["IFC","World Bank (IBRD/IDA)","MIGA"], a:1, why:"Governments borrow from the World Bank. IFC works with private companies."},
+  {type:"explain", prompt:"In your own words: why does IFC report both an own-account figure and a total figure that includes mobilisation? What does each tell you?", model:"Own account shows how much of IFC's own balance sheet is at work. The total shows how much private and public capital IFC pulled into development projects overall. The gap between the two is the leverage that IFC's presence creates, and that leverage is a core part of its value to the Group."}
+]},
+
+{ id:"m3", title:"Advisory Services", short:"Making firms and markets ready to invest", badge:"Adviser", blocks:[
+  {type:"guess", q:"Guess first. Who can be an IFC advisory client?", opts:["Only companies IFC has already invested in","Companies and governments","Only governments"], a:1, why:"Advisory reaches both. Firms get help becoming bankable; governments get help fixing the rules that block private investment."},
+  {type:"read", kicker:"Advice with a purpose", h:"What advisory work looks like", html:`
+    <p>Investment moves money. Advisory moves capability. IFC advisers work on three levels:</p>
+    <ul>
+      <li><strong>Inside firms.</strong> Corporate governance, environmental and social management, energy efficiency, supply chain standards, gender-inclusive practices, agribusiness productivity. The aim is a stronger company that can attract finance.</li>
+      <li><strong>Across sectors.</strong> Structuring public-private partnerships, designing renewable energy auctions, building payment and credit infrastructure. IFC acts as transaction adviser to governments so that private bidders show up.</li>
+      <li><strong>In the enabling environment.</strong> Working with the World Bank on business regulation, licensing, land, and investment policy so that markets open up.</li>
+    </ul>
+    <p>Advisory is not free to run. It is paid for by a mix of donor trust funds, IFC's own contribution, and fees from clients who can afford them. In many regions Advisory and Upstream teams have been merged into a single function, because both exist to prepare the ground for investment.</p>
+    <div class="callout">A telling example: a bank in a fragile state wants to lend to small businesses but has weak risk systems. An IFC loan alone would be reckless. Advisory first builds the systems; investment then follows with a risk-sharing facility. Sequence matters.</div>`},
+  {type:"sort", h:"Investment or advisory?", intro:"Tap each activity, then the bucket it belongs in.", bins:["Investment Services","Advisory Services"], items:[
+    ["Buying a 15% stake in a fintech",0],
+    ["Training a bank's staff on lending to women-owned businesses",1],
+    ["Structuring a hospital PPP for a state government",1],
+    ["Arranging a syndicated loan for a wind farm",0],
+    ["Helping a food company adopt IFC's Performance Standards",1],
+    ["Issuing a trade finance guarantee",0]]},
+  {type:"quiz", h:"Check your understanding", qs:[
+    {q:"IFC acts as transaction adviser on a solar auction for a government. What is the main goal?", opts:["To earn fees","To make sure private bidders compete and a bankable project results","To replace the government as project owner"], a:1, why:"Transaction advisory designs the process so that private investors turn up, prices fall and a financeable deal emerges."},
+    {q:"How is advisory work mainly funded?", opts:["Entirely from IFC bond issuance","Donor trust funds, IFC's own contribution and client fees","Interest on IFC's loans to governments"], a:1, why:"IFC does not lend to governments. Advisory relies on a blend of donor money, IFC's own funds and fees."},
+    {q:"Why were Advisory and Upstream teams merged in many regions?", opts:["To cut costs only","Because both prepare markets and clients for investment","Because advisory was discontinued"], a:1, why:"Both functions sit before the investment stage. Joining them gives one pipeline from idea to deal."}]},
+  {type:"flash", from:"m2", q:"Flashback. Which product lets IFC bring commercial banks into a loan it has arranged?", opts:["Equity","Syndication (B loans, parallel loans)","Blended finance"], a:1, why:"Syndications are IFC's main mobilisation tool: IFC keeps a slice and sells the rest to lenders that trust its due diligence."}
+]},
+
+{ id:"m4", title:"The Upstream approach", short:"Creating markets instead of waiting for deals", badge:"Market creator", blocks:[
+  {type:"guess", q:"Guess first. What problem was Upstream created to solve?", opts:["IFC had too many good deals and needed to say no","In the poorest and most fragile markets there were too few bankable projects to invest in","Investors wanted higher returns"], a:1, why:"IFC's mandate pushes it towards the hardest markets, but those markets have the thinnest pipelines. Upstream builds the pipeline."},
+  {type:"read", kicker:"IFC 3.0", h:"Moving up the river", html:`
+    <p>For decades IFC's model was to wait for a bankable project and then finance it. That worked in fast-growing markets. In low-income and fragile countries it left IFC with little to do, because the projects did not exist.</p>
+    <p>Upstream, launched in 2019 as the centre of the IFC 3.0 strategy, moves IFC earlier in the project cycle:</p>
+    <div class="diagram"><svg viewBox="0 0 640 170" role="img" aria-label="River diagram from upstream market creation to downstream investment">
+      <path d="M20 120 C 160 40, 280 40, 380 90 S 560 160, 620 100" stroke="#1D6F8B" stroke-width="18" fill="none" stroke-linecap="round" opacity=".25"/>
+      <path d="M20 120 C 160 40, 280 40, 380 90 S 560 160, 620 100" stroke="#1D6F8B" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <g font-family="IBM Plex Sans" font-size="13" fill="#10283F">
+        <circle cx="70" cy="95" r="9" fill="#E4A11B"/><text x="40" y="35" font-weight="600">Upstream</text><text x="40" y="52" font-size="11">Reform, feasibility,</text><text x="40" y="66" font-size="11">project development</text>
+        <circle cx="300" cy="55" r="9" fill="#E4A11B"/><text x="240" y="100" font-weight="600">Midstream</text><text x="240" y="117" font-size="11">Advisory, structuring,</text><text x="240" y="131" font-size="11">pipeline building</text>
+        <circle cx="560" cy="122" r="9" fill="#E4A11B"/><text x="470" y="40" font-weight="600">Downstream</text><text x="470" y="57" font-size="11">Investment, mobilisation,</text><text x="470" y="71" font-size="11">portfolio management</text>
+      </g>
+    </svg></div>
+    <ul>
+      <li><strong>Sector reform with the World Bank.</strong> Changing the rules so that private investment is legally and commercially possible: power sector unbundling, PPP frameworks, land registries.</li>
+      <li><strong>Project development.</strong> Feasibility studies, early-stage development capital, and standardised, replicable platforms such as Scaling Solar, which packaged auction design, documents and financing so that countries could run solar tenders quickly.</li>
+      <li><strong>Client creation.</strong> Finding and preparing local companies so they can qualify for IFC finance in a few years, not never.</li>
+    </ul>
+    <p>The payoff is measured as pipeline: the volume of future investment that Upstream work is expected to unlock. It is a bet on patience, and it is closely tied to IFC's commitment to IDA countries and fragile and conflict-affected situations.</p>`},
+  {type:"quiz", h:"Check your understanding", qs:[
+    {q:"Which activity is most clearly Upstream?", opts:["Disbursing a loan to an existing hotel chain","Working with a government to design a renewable energy auction framework before any project exists","Monitoring an equity investment's dividends"], a:1, why:"Upstream happens before there is a deal. It creates the conditions for one."},
+    {q:"Why does Upstream depend on close work with the World Bank?", opts:["The World Bank pays for it","Many blockages are policy and regulatory, which are the World Bank's domain with governments","IFC staff cannot travel without World Bank approval"], a:1, why:"Market creation often needs a law changed or a tariff reformed. That is public-sector work, so the two institutions have to move together."},
+    {q:"How is Upstream success mainly tracked?", opts:["Number of conferences held","Expected future investment pipeline it unlocks","Advisory fees collected"], a:1, why:"IFC's corporate scorecard tracks the cumulative Upstream-generated investment pipeline."},
+    {q:"Scaling Solar is an example of...", opts:["A replicable platform that packages reform, documents and finance so countries can run tenders quickly","An IFC-owned solar manufacturer","A green bond programme"], a:0, why:"Replicable platforms are the Upstream way of moving faster: solve the structure once, then reuse it across countries."}]},
+  {type:"flash", from:"m1", q:"Flashback. The Cascade approach says private solutions should be tried...", opts:["After public money is exhausted","Before public money is used, where they can work","Never in fragile states"], a:1, why:"Upstream is the Cascade in practice: it works to make the private option possible so public money can be saved for where it is truly needed."},
+  {type:"explain", prompt:"A colleague says: 'Upstream is just Advisory with a new name.' Push back in two or three sentences.", model:"Advisory usually improves a client or a sector that already exists. Upstream starts earlier, often before there is a client, and its purpose is explicitly to create a pipeline of future IFC investments in markets that have none. The two now work as one function in many regions, but Upstream's measure of success is investment that would not otherwise have happened."}
+]},
+
+{ id:"m5", title:"How IFC is funded", short:"Capital, bonds and the value of a AAA rating", badge:"Treasurer", blocks:[
+  {type:"guess", q:"Guess first. What happens to IFC's annual profit?", opts:["It is paid as dividends to member governments","It is retained to fund future investments, with part historically transferred to support IDA and advisory work","It is returned to the US Treasury"], a:1, why:"IFC pays no dividends. Profit builds the capital base that lets it keep borrowing and investing, and some of it has funded IDA and advisory."},
+  {type:"read", kicker:"Follow the money", h:"Where IFC's money comes from", html:`
+    <div class="diagram"><svg viewBox="0 0 640 240" role="img" aria-label="Funding flow diagram for IFC">
+      <g font-family="IBM Plex Sans" font-size="12" fill="#10283F">
+        <rect x="20" y="20" width="170" height="54" rx="8" fill="#CFE3EA"/><text x="105" y="42" text-anchor="middle" font-weight="600">Member governments</text><text x="105" y="60" text-anchor="middle" font-size="11">Paid-in capital (one-off)</text>
+        <rect x="20" y="93" width="170" height="54" rx="8" fill="#CFE3EA"/><text x="105" y="115" text-anchor="middle" font-weight="600">Bond investors</text><text x="105" y="133" text-anchor="middle" font-size="11">AAA bonds, many currencies</text>
+        <rect x="20" y="166" width="170" height="54" rx="8" fill="#CFE3EA"/><text x="105" y="188" text-anchor="middle" font-weight="600">Retained earnings</text><text x="105" y="206" text-anchor="middle" font-size="11">Profit reinvested each year</text>
+        <path d="M190 47 L250 110" stroke="#1D6F8B" stroke-width="2" fill="none"/><path d="M190 120 L250 120" stroke="#1D6F8B" stroke-width="2"/><path d="M190 193 L250 130" stroke="#1D6F8B" stroke-width="2"/>
+        <rect x="255" y="80" width="130" height="80" rx="8" fill="#1D6F8B"/><text x="320" y="112" text-anchor="middle" font-weight="600" fill="#fff">IFC balance</text><text x="320" y="130" text-anchor="middle" font-weight="600" fill="#fff">sheet</text>
+        <path d="M385 120 L445 120" stroke="#1D6F8B" stroke-width="2"/>
+        <rect x="450" y="80" width="170" height="80" rx="8" fill="#FBF3DF" stroke="#E4A11B"/><text x="535" y="108" text-anchor="middle" font-weight="600">Loans and equity</text><text x="535" y="126" text-anchor="middle" font-size="11">on commercial terms</text><text x="535" y="144" text-anchor="middle" font-size="11">Repayments and returns flow back</text>
+        <path d="M535 160 C 535 230, 105 240, 105 222" stroke="#E4A11B" stroke-width="2" fill="none" stroke-dasharray="5 4"/>
+      </g>
+    </svg></div>
+    <ul>
+      <li><strong>Paid-in capital.</strong> Members subscribed capital when IFC was created and topped it up in a 2018 capital increase. This is the foundation, but it is small relative to what IFC lends.</li>
+      <li><strong>Borrowing.</strong> IFC issues bonds in international and local markets. Because its shareholders are governments and its balance sheet is conservatively managed, it carries a AAA rating and borrows cheaply. Green and social bonds are a growing share of that programme.</li>
+      <li><strong>Retained earnings.</strong> IFC lends at commercial rates and takes equity gains, so it makes a profit in most years. Net income was $2.0 billion in FY25. That profit is retained, which grows the capital base and allows more borrowing.</li>
+    </ul>
+    <p>Capital adequacy is managed to protect the AAA rating: IFC compares the capital it holds against the capital its risk exposure requires, and it keeps enough liquidity to cover at least 45 percent of the next three years' net cash needs.</p>
+    <div class="callout sun">Why the AAA matters so much: every notch of rating changes IFC's borrowing cost, and IFC passes its borrowing cost through to clients in frontier markets. The rating is a development tool, not just a finance department trophy.</div>
+    <p>Advisory and Upstream are the exception. They are funded by donor trust funds, IFC's own contributions from earnings, and client fees. Blended finance also draws on donor pools such as the IDA Private Sector Window.</p>`},
+  {type:"quiz", h:"Check your understanding", qs:[
+    {q:"IFC's largest source of investable funds is...", opts:["Annual donor contributions","Bond issuance on capital markets","Fees from advisory clients"], a:1, why:"IFC borrows most of what it lends. Paid-in capital and retained earnings are the equity cushion that makes that borrowing safe."},
+    {q:"Why can IFC borrow cheaply?", opts:["Because it lends only to rich countries","Because of its AAA rating, backed by government shareholders and conservative capital management","Because bond investors do not expect repayment"], a:1, why:"The AAA rating reflects shareholder support, a diversified portfolio and strict capital rules."},
+    {q:"Which activity relies mainly on donor trust funds?", opts:["Loans to banks","Advisory Services and Upstream","Equity in infrastructure funds"], a:1, why:"Investments earn a return so they can be funded by borrowing. Advisory does not, so it needs grants and IFC's own contributions."},
+    {q:"IFC's profit is...", opts:["Paid out as dividends","Retained to build capital, with part historically transferred to support IDA and advisory","Given to the IMF"], a:1, why:"No dividends. Retained profit is what lets IFC grow without constant capital calls on members."}]},
+  {type:"flash", from:"m2", q:"Flashback. Which of IFC's three investment tests asks whether the market could have done the deal without IFC?", opts:["Commercial viability","Additionality","Development impact"], a:1, why:"Additionality is the 'why us?' test. Funding at commercial rates only makes sense if IFC brings something the market lacks."}
+]},
+
+{ id:"m6", title:"Measuring success", short:"AIMM, the Scorecard and the financial bottom line", badge:"Impact analyst", blocks:[
+  {type:"guess", q:"Guess first. When does IFC first score a project's development impact?", opts:["After it is completed","Before it is approved, and then monitored through its life","Only if a donor asks"], a:1, why:"Scoring before approval is the whole point: it lets impact influence which deals get done, not just describe them afterwards."},
+  {type:"read", kicker:"Two bottom lines", h:"How IFC knows whether it is working", html:`
+    <p>IFC has to succeed twice: financially, so the machine keeps running, and developmentally, so the machine is worth running. It measures both.</p>
+    <h3>AIMM: Anticipated Impact Measurement and Monitoring</h3>
+    <p>Since 2018 every investment, and since 2019 larger advisory projects, gets an ex-ante AIMM score out of 100. The score combines two questions:</p>
+    <ul>
+      <li><strong>Project outcomes.</strong> What will this project do for its stakeholders, the wider economy and the environment? Jobs, tax, access to services, emissions avoided.</li>
+      <li><strong>Market creation.</strong> Will it change the market itself: more competition, resilience, integration, inclusion or sustainability?</li>
+    </ul>
+    <p>The score is set against the difficulty of the market, so a modest project in a fragile state can outscore a large one in an easy market. Scores are monitored during implementation and re-rated at completion. In FY25, 88 percent of the 141 projects that reached the end of implementation were rated at least satisfactory on development impact.</p>
+    <h3>The World Bank Group Scorecard (FY24 to FY30)</h3>
+    <p>A single Scorecard now covers the World Bank, IFC and MIGA. It tracks vision-level goals, the country context, and results the Group can claim, with jobs as the headline. IFC's contribution to each indicator sits alongside the public-sector arms rather than in a separate report. IFC also runs its own corporate scorecard with targets on volume, mobilisation, climate share, IDA and fragile-state share, Upstream pipeline and average AIMM scores.</p>
+    <h3>Financial results</h3>
+    <p>Profitability, portfolio quality, capital adequacy and the AAA rating are the financial scorecard. A loss-making IFC could not borrow, and could not invest.</p>
+    <h3>Independent checks</h3>
+    <p>The Independent Evaluation Group evaluates results across the Group. The Compliance Advisor Ombudsman handles complaints from communities affected by IFC projects. External reviews such as MOPAN assess IFC's systems against peers.</p>
+    <div class="callout">The tension to remember: volume is easy to count, impact is not. AIMM exists so that a high-impact, hard-market deal can compete inside IFC with a bigger, easier one.</div>`},
+  {type:"sort", h:"Which measure answers the question?", intro:"Match each question to the measure that answers it.", bins:["AIMM score","WBG Scorecard","Financial results"], items:[
+    ["Will this specific project change how the market works?",0],
+    ["How many jobs did the whole Group help create this year?",1],
+    ["Can IFC keep its AAA rating next year?",2],
+    ["Did a completed project deliver what it promised?",0],
+    ["How does IFC's contribution combine with the World Bank's on one indicator?",1],
+    ["Was net income positive?",2]]},
+  {type:"quiz", h:"Check your understanding", qs:[
+    {q:"An AIMM score combines...", opts:["Loan size and interest rate","Project outcomes and market creation potential","Number of staff and travel days"], a:1, why:"Both halves matter: what the project delivers, and whether it changes the market around it."},
+    {q:"Why are AIMM scores adjusted for market difficulty?", opts:["To make fragile-state projects look worse","So a modest project in a hard market can compete with a large project in an easy one","To hide poor results"], a:1, why:"Without the adjustment, IFC would drift towards easy markets, which is exactly what its mandate tells it not to do."},
+    {q:"What is new about the FY24 to FY30 Scorecard?", opts:["It covers IFC only","One Scorecard now covers the World Bank, IFC and MIGA together","It replaced AIMM"], a:1, why:"It is part of working as one Group. AIMM continues underneath it at the project level."},
+    {q:"Who handles complaints from communities affected by IFC projects?", opts:["The Compliance Advisor Ombudsman","The bond investors","The client company only"], a:0, why:"CAO is the independent accountability mechanism for IFC and MIGA."}]},
+  {type:"flash", from:"m4", q:"Flashback. Upstream work is tracked mainly by...", opts:["Expected future investment pipeline","Number of loans disbursed this year","Advisory fees"], a:0, why:"Upstream is measured on what it will unlock, which is why it needs patience and a long horizon on the scorecard."},
+  {type:"explain", prompt:"Why does IFC need a financial bottom line as well as a development one? Answer in two sentences.", model:"IFC funds its investments by borrowing, and it can only borrow cheaply while it is profitable, well capitalised and AAA rated. Development impact is the purpose, but financial strength is what keeps the purpose affordable year after year."}
+]}
+];
+
+/* Final challenge: the Deal Desk. Learners apply everything to realistic memos. */
+const DEALS = [
+  {memo:"Memo from a regional director: 'The Ministry of Health of a low-income country asks for $120 million to build and run 40 district clinics. They want IFC to lend to the ministry directly.'",
+   opts:["Lend to the ministry; health is a priority sector","Refer to the World Bank (IDA) for public financing; offer IFC advisory on a PPP model if private operators could run some clinics","Decline; IFC does not work in health"], a:1,
+   why:"IFC does not lend to governments. IDA can. IFC could still add value by advising on whether private operators can deliver part of the programme under a PPP."},
+  {memo:"A solar developer wants long-term debt for a 50 MW plant. The country has no competitive tender framework, no standard power purchase agreement, and a state utility with unclear finances.",
+   opts:["Fund the plant now; solar is bankable","Start Upstream: work with the World Bank on the utility and tariff issues, help the government adopt a replicable auction platform, then finance the winning projects","Tell the developer to come back in ten years"], a:1,
+   why:"Financing one plant into a broken framework creates one expensive project. Fixing the framework first creates a market and a pipeline. That is the Upstream logic."},
+  {memo:"A mid-sized bank in a fragile state wants a $30 million loan to on-lend to small businesses. Its credit risk systems are weak and it has never lent to this segment.",
+   opts:["Lend the full amount on standard terms","Sequence it: advisory to build risk systems and products first, then a loan with a risk-sharing facility, possibly using blended concessional funds from the IDA Private Sector Window","Buy a majority stake and run the bank"], a:1,
+   why:"Advisory reduces the risk, blended finance absorbs the residual risk that the market will not take, and the loan follows. IFC does not take majority control."},
+  {memo:"A European manufacturer is building a factory in a market with a history of contract disputes. They ask IFC for protection against expropriation and currency inconvertibility.",
+   opts:["Offer an IFC guarantee","Refer them to MIGA for political risk insurance; IFC could consider co-financing the factory itself","Advise them not to invest"], a:1,
+   why:"Political risk insurance is MIGA's product. IFC might still finance the plant. This is the Group working as one."},
+  {memo:"A family-owned agribusiness wants IFC to buy 60 percent of the company and take over management to 'professionalise' it.",
+   opts:["Agree; a controlling stake gives IFC more influence","Offer a minority equity stake combined with corporate governance advisory, leaving the family in control","Offer only a loan"], a:1,
+   why:"IFC is a minority investor and does not run companies. Governance advisory is how it improves management without taking control."},
+  {memo:"Two deals compete for the last capital in a budget: a $200 million loan to a well-established telecom in a middle-income country that three commercial banks are also offering, or a $25 million loan to a first-of-its-kind cold-chain company in a fragile state.",
+   opts:["The telecom; bigger volume, safer return","The cold-chain company; higher additionality and a higher difficulty-adjusted AIMM score, even though it is smaller","Split the money equally"], a:1,
+   why:"The telecom fails the additionality test: the market is already there. AIMM and the mandate both point to the harder, smaller deal."}
+];
+
+/* =========================================================
+   STATE, PERSISTENCE, GAMIFICATION
+   ========================================================= */
+let S = {xp:0, done:{}, badges:{}, streak:0, best:0, unlocked:1, name:""};
+const LEVELS=[[0,"Observer"],[120,"Analyst"],[300,"Associate"],[520,"Investment Officer"],[760,"Principal"],[1000,"Director"]];
+const memStore={};
+async function load(){ try{ const r=await window.storage.get("ifc-course-state"); if(r&&r.value) S=Object.assign(S,JSON.parse(r.value)); }catch(e){ if(memStore.s) S=Object.assign(S,memStore.s);} }
+async function save(){ memStore.s=S; try{ await window.storage.set("ifc-course-state",JSON.stringify(S)); }catch(e){} }
+function level(){ let l=LEVELS[0][1]; for(const [x,n] of LEVELS) if(S.xp>=x) l=n; return l; }
+function addXP(n,msg){ S.xp=Math.max(0,S.xp+n); if(msg) toast(`<b>${n>0?"+"+n:n} XP</b> ${msg}`); renderSide(); save(); }
+function toast(html){ const t=document.getElementById("toast"); t.innerHTML=html; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2600); }
+function hit(ok){ if(ok){S.streak++; if(S.streak>S.best)S.best=S.streak; if(S.streak===5&&!S.badges.streak){S.badges.streak=1;toast("<b>Badge earned</b> Five in a row");}} else S.streak=0; }
+async function resetAll(){ if(!confirm("Reset all progress and XP?")) return; S={xp:0,done:{},badges:{},streak:0,best:0,unlocked:1,name:""}; await save(); go("m1"); }
+
+/* =========================================================
+   RENDERING
+   ========================================================= */
+let cur="m1";
+function renderSide(){
+  document.getElementById("xp").textContent=S.xp+" XP";
+  document.getElementById("lvl").textContent=level();
+  document.getElementById("streak").textContent=S.streak>1?`Streak ${S.streak}`:"";
+  const total=COURSE.length+1, done=Object.keys(S.done).length;
+  document.getElementById("pfill").style.width=Math.round(done/total*100)+"%";
+  const map=document.getElementById("map");
+  const nodes=[...COURSE.map((m,i)=>({id:m.id,t:`${i+1}. ${m.title}`,s:m.short,i})),{id:"final",t:"The Deal Desk",s:"Final challenge",i:COURSE.length},{id:"about",t:"About this course",s:"How it was designed",i:99}];
+  map.innerHTML=`<svg aria-hidden="true"><path d="M12 10 V 400" stroke="#4E8AA3" stroke-width="3" stroke-dasharray="4 6"/></svg>`+nodes.map(n=>{
+    const locked=n.i<99&&n.i>S.unlocked-1; const done=S.done[n.id];
+    return `<button class="node ${cur===n.id?"active":""} ${done?"done":""} ${locked?"locked":""}" onclick="go('${n.id}')" ${locked?'aria-label="Locked. Complete the previous stage or skip ahead."':""}>
+      <span class="dot">${done?"✓":(n.i===99?"?":n.i+1)}</span><span class="t">${n.t}<span class="s">${n.s}</span></span></button>`;
+  }).join("");
+  const B=[["m1","Group navigator"],["m2","Deal maker"],["m3","Adviser"],["m4","Market creator"],["m5","Treasurer"],["m6","Impact analyst"],["streak","Five in a row"],["final","Deal Desk champion"]];
+  document.getElementById("badges").innerHTML=B.map(([k,n])=>`<span class="badge ${S.badges[k]?"earned":""}">${S.badges[k]?"★":"○"} ${n}</span>`).join("");
+}
+
+function go(id){
+  cur=id; renderSide();
+  const main=document.getElementById("main"); main.innerHTML="";
+  window.scrollTo({top:0});
+  if(id==="final") return renderFinal(main);
+  if(id==="about") return renderAbout(main);
+  const idx=COURSE.findIndex(m=>m.id===id), m=COURSE[idx];
+  if(idx>S.unlocked-1){
+    main.innerHTML=`<div class="block"><div class="kicker">Stage ${idx+1} is not yet unlocked</div><h2>${m.title}</h2><p>The course is sequenced so that each stage builds on the last, and later stages quiz you on earlier ones. You can skip ahead if you already know this ground.</p><div class="row"><button class="btn" onclick="go('${COURSE[S.unlocked-1].id}')">Go to my current stage</button><button class="btn ghost" onclick="S.unlocked=${idx+1};save();go('${id}')">Skip ahead anyway</button></div></div>`;
+    return;
+  }
+  const head=document.createElement("div"); head.className="block";
+  head.innerHTML=`<div class="kicker">Stage ${idx+1} of ${COURSE.length}</div><h2>${m.title}</h2><p class="small">${m.short}. About 10 minutes. Blocks appear one at a time so you can work through one idea before the next.</p>`;
+  main.appendChild(head);
+  m.blocks.forEach((b,bi)=>{ const el=renderBlock(m,b,bi); if(bi>0) el.classList.add("hidden"); main.appendChild(el); });
+  const end=document.createElement("div"); end.className="block hidden"; end.id="end-"+m.id;
+  const next=COURSE[idx+1];
+  end.innerHTML=`<h2>Stage complete</h2><p>You have finished <strong>${m.title}</strong>.</p><div class="row"><button class="btn sun" onclick="go('${next?next.id:"final"}')">${next?"Continue to "+next.title:"Go to the Deal Desk"}</button></div>`;
+  main.appendChild(end);
+}
+
+function next(el){ const n=el.nextElementSibling; if(n){ n.classList.remove("hidden"); n.scrollIntoView({behavior:"smooth",block:"start"}); } }
+function completeModule(m){ if(!S.done[m.id]){ S.done[m.id]=1; S.badges[m.id]=1; const i=COURSE.findIndex(x=>x.id===m.id); S.unlocked=Math.max(S.unlocked,i+2); addXP(50,`Stage complete. Badge earned: ${m.badge}`);} renderSide(); save(); }
+
+function renderBlock(m,b,bi){
+  const el=document.createElement("div"); el.className="block "+b.type;
+  const cont=`<div class="row"><button class="btn" onclick="next(this.closest('.block'))">Continue</button></div>`;
+  if(b.type==="read"){ el.innerHTML=`<div class="kicker">${b.kicker}</div><h2>${b.h}</h2>${b.html}${cont}`; }
+  else if(b.type==="guess"||b.type==="flash"){
+    const k=b.type==="guess"?"Guess first":"Flashback from an earlier stage";
+    el.innerHTML=`<div class="kicker">${k}</div><p><strong>${b.q}</strong></p><div class="opts">${b.opts.map((o,i)=>`<button class="opt" onclick="answerSingle(this,${i},${b.a},${bi},'${m.id}')"><span class="k">${"ABC"[i]}</span><span>${o}</span></button>`).join("")}</div><div class="fbhost"></div>`;
+    el.dataset.xp=b.type==="guess"?5:15;
+  }
+  else if(b.type==="sort"){
+    el.innerHTML=`<div class="kicker">Sorting game</div><h2>${b.h}</h2><p class="small">${b.intro}</p><div class="pool">${b.items.map((it,i)=>`<button class="chip" data-i="${i}" onclick="pickChip(this)">${it[0]}</button>`).join("")}</div><div class="bins">${b.bins.map((n,i)=>`<div class="bin" tabindex="0" role="button" data-b="${i}" onclick="dropChip(this)" onkeydown="if(event.key==='Enter')dropChip(this)"><h4>${n}</h4><div class="in"></div></div>`).join("")}</div><div class="row"><button class="btn" onclick="checkSort(this.closest('.block'))">Check</button><button class="btn ghost" onclick="resetSort(this.closest('.block'))">Start again</button></div><div class="fbhost"></div>`;
+    el._items=b.items;
+  }
+  else if(b.type==="quiz"){
+    el.innerHTML=`<div class="kicker">Retrieval practice, ${b.qs.length} questions</div><h2>${b.h}</h2><p class="small">Pick an answer, then say how sure you are. Sure and right earns 20 XP; unsure and right earns 10; sure and wrong costs 5. Calibration is part of the skill.</p>`+
+      b.qs.map((q,qi)=>`<div class="q" data-qi="${qi}"><p><strong>${qi+1}. ${q.q}</strong></p><div class="opts">${q.opts.map((o,i)=>`<button class="opt" onclick="selOpt(this,${i})"><span class="k">${"ABC"[i]}</span><span>${o}</span></button>`).join("")}</div><div class="conf">How sure? <button onclick="selConf(this,1)">Sure</button><button onclick="selConf(this,0)">Not sure</button> <button class="btn" style="padding:5px 12px" onclick="checkQ(this,${q.a},'${m.id}')">Check</button></div><div class="fbhost"></div></div>`).join("")+
+      `<div class="fbhost total"></div>`;
+    el._qs=b.qs; el._m=m;
+  }
+  else if(b.type==="explain"){
+    el.innerHTML=`<div class="kicker">Explain it yourself</div><p><strong>${b.prompt}</strong></p><textarea placeholder="Write it in your own words. Nobody marks this; the act of putting it into words is what makes it stick."></textarea><div class="row"><button class="btn" onclick="showModel(this.closest('.block'))">Compare with a model answer</button></div><div class="reveal hidden"><div class="model">${b.model}</div><div class="row"><button class="btn" onclick="next(this.closest('.block'))">Continue</button></div></div>`;
+  }
+  return el;
+}
+
+/* Guess / flashback */
+function answerSingle(btn,i,a,bi,mid){
+  const el=btn.closest(".block"); if(el.dataset.answered) return; el.dataset.answered=1;
+  const opts=el.querySelectorAll(".opt"); opts.forEach((o,j)=>{ if(j===a)o.classList.add("right"); else if(j===i)o.classList.add("wrong"); o.disabled=true; });
+  const m=COURSE.find(x=>x.id===mid), b=m.blocks[bi]; const ok=i===a; hit(ok);
+  const xp=ok?+el.dataset.xp:(b.type==="guess"?2:0);
+  el.querySelector(".fbhost").innerHTML=`<div class="fb ${ok?"ok":"no"}"><b>${ok?"Right.":(b.type==="guess"?"Good guess to test. Here is the answer.":"Not this time.")}</b>${b.why}</div><div class="row"><button class="btn" onclick="next(this.closest('.block'))">Continue</button></div>`;
+  addXP(xp, ok?(b.type==="guess"?"Prediction confirmed":"Flashback recalled"):"For making a prediction");
+}
+
+/* Sorting */
+let picked=null;
+function pickChip(c){ document.querySelectorAll(".chip.sel").forEach(x=>x.classList.remove("sel")); picked=c; c.classList.add("sel"); }
+function dropChip(bin){ if(!picked) return; const s=document.createElement("span"); s.textContent=picked.textContent; s.dataset.i=picked.dataset.i; s.onclick=e=>{e.stopPropagation(); s.remove(); picked=null; bin.closest(".block").querySelector(`.chip[data-i="${s.dataset.i}"]`).classList.remove("placed");}; bin.querySelector(".in").appendChild(s); picked.classList.add("placed"); picked.classList.remove("sel"); picked=null; }
+function resetSort(el){ el.querySelectorAll(".bin .in").forEach(x=>x.innerHTML=""); el.querySelectorAll(".chip").forEach(c=>c.classList.remove("placed","sel")); el.querySelector(".fbhost").innerHTML=""; }
+function checkSort(el){
+  const items=el._items; let right=0, placed=0;
+  el.querySelectorAll(".bin").forEach(bin=>{ const b=+bin.dataset.b; bin.querySelectorAll(".in span").forEach(s=>{ placed++; const ok=items[+s.dataset.i][1]===b; s.classList.toggle("ok",ok); s.classList.toggle("bad",!ok); if(ok) right++; }); });
+  if(placed<items.length){ el.querySelector(".fbhost").innerHTML=`<div class="fb no"><b>${items.length-placed} still in the pool.</b>Place every item, then check.</div>`; return; }
+  const all=right===items.length; hit(all);
+  const wrongs=items.filter((it,i)=>{const s=el.querySelector(`.in span[data-i="${i}"]`); return s&&s.classList.contains("bad");}).map(it=>`<li>"${it[0]}" belongs under <strong>${el.querySelectorAll(".bin h4")[it[1]].textContent}</strong>.</li>`).join("");
+  el.querySelector(".fbhost").innerHTML=`<div class="fb ${all?"ok":"no"}"><b>${right} of ${items.length} correct.</b>${all?"Every item in the right place.":"Struck-through items are in the wrong bucket:<ul>"+wrongs+"</ul>Tap a placed item to remove it and try again, or continue."}</div><div class="row"><button class="btn" onclick="next(this.closest('.block'))">Continue</button></div>`;
+  if(!el.dataset.scored){ el.dataset.scored=1; addXP(right*5,"Sorting game"); }
+}
+
+/* Quiz */
+function selOpt(btn,i){ const q=btn.closest(".q"); if(q.dataset.done) return; q.querySelectorAll(".opt").forEach(o=>o.classList.remove("sel")); btn.classList.add("sel"); q.dataset.sel=i; }
+function selConf(btn,c){ const q=btn.closest(".q"); if(q.dataset.done) return; q.querySelectorAll(".conf button:not(.btn)").forEach(o=>o.classList.remove("sel")); btn.classList.add("sel"); q.dataset.conf=c; }
+function checkQ(btn,a,mid){
+  const q=btn.closest(".q"); if(q.dataset.done) return;
+  if(q.dataset.sel===undefined||q.dataset.conf===undefined){ q.querySelector(".fbhost").innerHTML=`<div class="fb no"><b>Two things needed.</b>Pick an answer and say how sure you are.</div>`; return; }
+  q.dataset.done=1; const sel=+q.dataset.sel, conf=+q.dataset.conf, ok=sel===a; hit(ok);
+  q.querySelectorAll(".opt").forEach((o,j)=>{ if(j===a)o.classList.add("right"); else if(j===sel)o.classList.add("wrong"); o.disabled=true; });
+  q.querySelectorAll(".conf button").forEach(b=>b.disabled=true);
+  const block=q.closest(".block"), qs=block._qs, why=qs[+q.dataset.qi].why;
+  const xp=ok?(conf?20:10):(conf?-5:0);
+  let calib=""; if(ok&&!conf) calib=" You knew more than you thought."; if(!ok&&conf) calib=" Confident and wrong is the pattern worth noticing; re-read the block above.";
+  q.querySelector(".fbhost").innerHTML=`<div class="fb ${ok?"ok":"no"}"><b>${ok?"Correct.":"Not quite."}</b>${why}${calib}</div>`;
+  q.dataset.ok=ok?1:0; addXP(xp, ok?"Correct answer":(conf?"Confident but wrong":null));
+  const all=[...block.querySelectorAll(".q")]; if(all.every(x=>x.dataset.done)){
+    const n=all.filter(x=>x.dataset.ok==="1").length, pass=n/all.length>=0.7;
+    block.querySelector(".fbhost.total").innerHTML=`<div class="fb ${pass?"ok":"no"}"><b>${n} of ${all.length} correct.</b>${pass?"That is enough to move on. The flashback questions in later stages will bring these ideas back when you are starting to forget them, which is when recall does the most good.":"Below 70 percent. Re-read the stage, then retry the quiz. Effortful retries are where the learning happens."}</div><div class="row">${pass?`<button class="btn sun" onclick="finishStage('${mid}',this)">Continue</button>`:""}<button class="btn ghost" onclick="retryQuiz(this.closest('.block'))">Retry quiz</button></div>`;
+  }
+}
+function retryQuiz(block){ const m=block._m, bi=m.blocks.findIndex(b=>b.qs===block._qs); const fresh=renderBlock(m,m.blocks[bi],bi); block.replaceWith(fresh); fresh.scrollIntoView({behavior:"smooth"}); }
+function finishStage(mid,btn){ const m=COURSE.find(x=>x.id===mid); completeModule(m); next(btn.closest(".block")); }
+function showModel(el){ el.querySelector(".reveal").classList.remove("hidden"); if(!el.dataset.scored){ el.dataset.scored=1; const t=el.querySelector("textarea").value.trim(); if(t.length>20) addXP(15,"Self-explanation written"); } }
+
+/* Final challenge */
+function renderFinal(main){
+  const ready=Object.keys(S.done).filter(k=>k.startsWith("m")).length>=COURSE.length;
+  main.innerHTML=`<div class="block"><div class="kicker">Final challenge</div><h2>The Deal Desk</h2><p>Six memos land on your desk. For each, choose what IFC should do. There are no confidence buttons here; this is the exam room. You need five of six to earn the Deal Desk champion badge.</p>${ready?"":`<div class="callout sun">You have not completed every stage yet. You can attempt the Deal Desk now, but the memos assume all six stages.</div>`}</div>`+
+    DEALS.map((d,i)=>`<div class="deal" data-i="${i}"><div class="kicker">Memo ${i+1}</div><div class="memo">${d.memo}</div><div class="opts">${d.opts.map((o,j)=>`<button class="opt" onclick="dealAnswer(this,${i},${j})"><span class="k">${"ABC"[j]}</span><span>${o}</span></button>`).join("")}</div><div class="fbhost"></div></div>`).join("")+
+    `<div class="block hidden" id="dealResult"></div>`;
+  if(S.done.final){ document.getElementById("dealResult").classList.remove("hidden"); document.getElementById("dealResult").innerHTML=certificate(); }
+}
+let dealScore={};
+function dealAnswer(btn,i,j){
+  const d=btn.closest(".deal"); if(d.dataset.done) return; d.dataset.done=1; const ok=j===DEALS[i].a; hit(ok); dealScore[i]=ok;
+  d.querySelectorAll(".opt").forEach((o,k)=>{ if(k===DEALS[i].a)o.classList.add("right"); else if(k===j)o.classList.add("wrong"); o.disabled=true; });
+  d.querySelector(".fbhost").innerHTML=`<div class="fb ${ok?"ok":"no"}"><b>${ok?"Good call.":"Different call."}</b>${DEALS[i].why}</div>`;
+  addXP(ok?25:0, ok?"Deal Desk":null);
+  if(Object.keys(dealScore).length===DEALS.length){
+    const n=Object.values(dealScore).filter(Boolean).length; const r=document.getElementById("dealResult"); r.classList.remove("hidden");
+    if(n>=5){ if(!S.done.final){ S.done.final=1; S.badges.final=1; addXP(100,"Deal Desk champion"); save(); } r.innerHTML=certificate(n); }
+    else r.innerHTML=`<h2>${n} of 6</h2><p>Close, but the badge needs five. Revisit the stages the memos drew on, then come back. Every memo maps to a stage: 1 and 4 are the Group, 2 is Upstream, 3 is Advisory and blended finance, 5 is Investment rules, 6 is Measuring success.</p><div class="row"><button class="btn" onclick="dealScore={};go('final')">Try the Deal Desk again</button></div>`;
+    r.scrollIntoView({behavior:"smooth"});
+  }
+}
+function certificate(n){
+  return `<div class="cert"><div class="kicker">Certificate of completion</div><h2>Upstream to Impact</h2><p>This certifies that</p><input value="${S.name||""}" placeholder="Type your name" oninput="S.name=this.value;save()"><p style="margin-top:14px">has completed the six stages and the Deal Desk challenge on how IFC works, its products, its funding and how it measures success.</p><p><strong>${S.xp} XP</strong> earned, level <strong>${level()}</strong>${n?`, Deal Desk ${n} of 6`:""}</p><p class="small">${new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})}</p><div class="row" style="justify-content:center"><button class="btn ghost" onclick="window.print()">Print or save as PDF</button></div></div>
+  <div class="callout" style="margin-top:18px">Come back in a week and retake the quizzes. Spaced retrieval a week or a month later is the single most reliable way to make this knowledge permanent. Your XP carries on.</div>`;
+}
+
+/* About */
+function renderAbout(main){
+  main.innerHTML=`<div class="block"><div class="kicker">Design notes</div><h2>How this course was built</h2>
+  <p>The course applies findings from the learning sciences that hold up well across many replications. Each design choice below maps to a mechanism.</p>
+  <table><tr><th>What you see</th><th>Why it is there</th></tr>
+  <tr><td>"Guess first" at the start of each stage</td><td>Pre-testing and the generation effect: trying to answer before being taught improves later recall, even when the guess is wrong.</td></tr>
+  <tr><td>One idea per screen, revealed on Continue</td><td>Cognitive load management. Chunking stops working memory from being swamped, and the click is a small commitment that keeps attention on task.</td></tr>
+  <tr><td>Simple diagrams next to text</td><td>Dual coding: verbal and visual channels together build a more durable memory than either alone.</td></tr>
+  <tr><td>Quizzes after each stage, with immediate explanations</td><td>Retrieval practice is more powerful than re-reading. Feedback closes the loop while the error is still fresh.</td></tr>
+  <tr><td>Confidence ratings on quiz answers</td><td>Metacognitive calibration. Learners who track their own certainty study more effectively; "confident and wrong" is the most useful signal a quiz can give.</td></tr>
+  <tr><td>Flashback questions from earlier stages</td><td>Spacing and interleaving. Recalling an idea after a delay, mixed with new material, strengthens it far more than massed practice.</td></tr>
+  <tr><td>Sorting games and the Deal Desk</td><td>Active classification and transfer. Applying rules to new cases is what turns facts into usable judgement.</td></tr>
+  <tr><td>"Explain it yourself" prompts</td><td>Self-explanation and elaboration: putting an idea in your own words forces you to connect it to what you already know.</td></tr>
+  <tr><td>XP, levels, badges, streaks, a mastery gate at 70 percent and a final boss challenge</td><td>Gamification that rewards effort and mastery rather than speed. Progress is visible, failure is cheap and recoverable, and the skip-ahead option respects adult learners' autonomy.</td></tr>
+  <tr><td>Certificate with a nudge to return in a week</td><td>Spaced re-testing after completion is where most long-term retention is won.</td></tr>
+  </table>
+  <h3>Sources for the content</h3>
+  <p class="small">IFC FY25 Annual Management's Discussion and Analysis; World Bank Group Annual Report 2025 and IFC appendixes; World Bank Group Scorecard FY24 to FY30; IFC pages on Upstream and AIMM; MOPAN 2024 assessment of IFC; IEG Results and Performance 2024. Figures are for fiscal year 2025 (to 30 June 2025) and should be refreshed annually.</p>
+  <h3>Adapting the course</h3>
+  <p class="small">All content lives in the COURSE and DEALS objects at the top of the file. Edit text, add a stage, or swap the Deal Desk memos for your own region's cases without touching the engine. Progress is saved per learner where storage is available and otherwise kept for the session.</p></div>`;
+}
+
+/* Boot */
+(async()=>{ await load(); const first=COURSE[Math.min(S.unlocked-1,COURSE.length-1)]; go(S.done.final?"final":first.id); })();
+</script>
+</body>
+</html>
